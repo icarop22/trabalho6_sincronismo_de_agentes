@@ -1,0 +1,7 @@
+planejador L  47 hora 11:53:44.020 pronto
+planejador L  48 hora 11:53:44.020 ENVIA tarefa 1
+planejador L  52 hora 11:53:44.321 RECEBE resultado 1
+planejador L  53 hora 11:53:44.321 ENVIA tarefa 2
+planejador L  57 hora 11:53:44.621 RECEBE resultado 2
+planejador L  58 hora 11:53:44.621 ENVIA tarefa 3
+planejador L  62 hora 11:53:44.922 RECEBE resultado 3

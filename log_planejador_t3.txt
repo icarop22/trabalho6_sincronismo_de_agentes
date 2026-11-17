@@ -1,0 +1,2 @@
+planejador L  47 hora 12:07:52.431 pronto
+planejador L  48 hora 12:07:52.431 ENVIA tarefa 1

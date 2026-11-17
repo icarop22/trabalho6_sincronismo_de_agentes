@@ -1,0 +1,10 @@
+executor   L   0 hora 11:53:24.132 pronto
+executor   L  49 hora 11:53:41.020 RECEBE tarefa 1
+executor   L  50 hora 11:53:41.321 chamou o LLM
+executor   L  51 hora 11:53:41.321 ENVIA resultado 1
+executor   L  54 hora 11:53:41.321 RECEBE tarefa 2
+executor   L  55 hora 11:53:41.621 chamou o LLM
+executor   L  56 hora 11:53:41.621 ENVIA resultado 2
+executor   L  59 hora 11:53:41.622 RECEBE tarefa 3
+executor   L  60 hora 11:53:41.922 chamou o LLM
+executor   L  61 hora 11:53:41.922 ENVIA resultado 3
