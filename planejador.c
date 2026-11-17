@@ -16,7 +16,7 @@
 
 static int L = L_INICIAL;
 
-/* Prepara o endereço do servidor; o sistema escolhe a porta local do cliente. */
+/* cria o socket udp e monta o endereço do servidor, a porta do cliente o sistema escolhe sozinho */
 int criar_socket_cliente(int porta, struct sockaddr_in *servidor)
 {
     int s;
@@ -27,6 +27,7 @@ int criar_socket_cliente(int porta, struct sockaddr_in *servidor)
         exit(1);
     }
 
+    /* zera a struct antes de preencher pra não sobrar lixo */
     memset(servidor, 0, sizeof *servidor);
     servidor->sin_family = AF_INET;
     servidor->sin_port = htons(porta);
@@ -35,7 +36,7 @@ int criar_socket_cliente(int porta, struct sockaddr_in *servidor)
     return s;
 }
 
-/* Registra o horário físico e o contador lógico do planejador. */
+/* imprime o que aconteceu junto com o valor de L e a hora */
 void registrar(const char *evento)
 {
     struct timeval tv;
@@ -48,11 +49,12 @@ void registrar(const char *evento)
         exit(1);
     }
 
+    /* passa tudo pra milissegundo e soma o desvio */
     ms = tv.tv_sec * 1000LL + tv.tv_usec / 1000 + DESVIO_MS;
     seg = (time_t)(ms / 1000);
 
     if (localtime_r(&seg, &h) == NULL) {
-        fprintf(stderr, "Erro ao converter o horario.\n");
+        fprintf(stderr, "deu erro ao converter a hora\n");
         exit(1);
     }
 
@@ -61,14 +63,14 @@ void registrar(const char *evento)
     fflush(stdout);
 }
 
-/* Regra 2: incrementa antes do envio e retorna o valor que vai no pacote. */
+/* regra 2: soma 1 antes de mandar e devolve o L pra ir junto na mensagem */
 int lamport_envio(void)
 {
     L++;
     return L;
 }
 
-/* Monta o pacote com o texto e o relógio lógico, e envia ao servidor. */
+/* junta texto e L num pacote só e manda pro servidor */
 void enviar_mensagem(int s, const char *texto, int l,
                      const struct sockaddr_in *dst, socklen_t tam)
 {
@@ -77,10 +79,11 @@ void enviar_mensagem(int s, const char *texto, int l,
 
     n = snprintf(buf, sizeof buf, "%s|%d", texto, l);
     if (n < 0 || (size_t)n >= sizeof buf) {
-        fprintf(stderr, "Erro ao montar a mensagem.\n");
+        fprintf(stderr, "deu erro ao montar a mensagem\n");
         exit(1);
     }
 
+    /* manda o pacote pro endereço do servidor */
     if (sendto(s, buf, (size_t)n, 0,
                (const struct sockaddr *)dst, tam) == -1) {
         perror("sendto");
@@ -88,7 +91,7 @@ void enviar_mensagem(int s, const char *texto, int l,
     }
 }
 
-/* Aguarda a resposta e extrai o contador lógico que veio junto dela. */
+/* espera a resposta chegar e separa o texto do número do lamport */
 int receber_mensagem(int s, char *texto, struct sockaddr_in *orig, socklen_t *tam)
 {
     char buf[128];
@@ -99,7 +102,7 @@ int receber_mensagem(int s, char *texto, struct sockaddr_in *orig, socklen_t *ta
     struct sockaddr_in *destino = orig;
     socklen_t *tamanho = tam;
 
-    /* O planejador não usa o endereço de quem respondeu, mas recvfrom pode preenchê-lo. */
+    /* aqui eu não preciso saber quem respondeu, mas o recvfrom quer um lugar pra guardar */
     if (destino == NULL) {
         destino = &remetente;
     }
@@ -114,17 +117,19 @@ int receber_mensagem(int s, char *texto, struct sockaddr_in *orig, socklen_t *ta
         exit(1);
     }
 
+    /* coloco o \0 na mão porque o udp não manda o fim da string */
     buf[r] = '\0';
 
+    /* o formato é texto|numero, pego o texto até a barra e depois o número */
     if (sscanf(buf, "%63[^|]|%d", texto, &ts) != 2) {
-        fprintf(stderr, "Mensagem recebida em formato invalido: %s\n", buf);
+        fprintf(stderr, "mensagem veio num formato estranho: %s\n", buf);
         exit(1);
     }
 
     return ts;
 }
 
-/* Regra 3: atualiza o relógio usando o valor recebido e soma uma unidade. */
+/* regra 3: fico com o maior entre o meu L e o que chegou, e somo 1 */
 void lamport_recebimento(int ts)
 {
     if (ts > L) {
@@ -147,13 +152,13 @@ int main(void)
         snprintf(msg, sizeof msg, "tarefa %d", k);
         enviar_mensagem(s, msg, lamport_envio(), &servidor, sizeof servidor);
 
-        snprintf(ev, sizeof ev, "ENVIA tarefa %d", k);
+        snprintf(ev, sizeof ev, "enviou tarefa %d", k);
         registrar(ev);
 
         ts = receber_mensagem(s, texto, NULL, NULL);
         lamport_recebimento(ts);
 
-        snprintf(ev, sizeof ev, "RECEBE resultado %d", k);
+        snprintf(ev, sizeof ev, "recebeu resultado %d", k);
         registrar(ev);
     }
 

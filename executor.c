@@ -15,7 +15,7 @@
 
 static int L = 0;
 
-/* Cria o ponto de escuta do executor na porta definida. */
+/* cria o socket udp e prende ele na porta pra ficar esperando mensagem */
 int criar_socket_servidor(int porta)
 {
     int s;
@@ -27,11 +27,13 @@ int criar_socket_servidor(int porta)
         exit(1);
     }
 
+    /* zera tudo antes pra não ficar lixo na struct */
     memset(&endereco, 0, sizeof endereco);
     endereco.sin_family = AF_INET;
     endereco.sin_port = htons(porta);
     endereco.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 
+    /* o bind é o que liga o socket na porta, sem ele ninguém consegue falar com o executor */
     if (bind(s, (struct sockaddr *)&endereco, sizeof endereco) == -1) {
         perror("bind");
         close(s);
@@ -41,7 +43,7 @@ int criar_socket_servidor(int porta)
     return s;
 }
 
-/* Mostra o relógio lógico junto com o horário físico deste processo. */
+/* imprime o que aconteceu junto com o valor de L e a hora (com o desvio somado) */
 void registrar(const char *evento)
 {
     struct timeval tv;
@@ -54,11 +56,12 @@ void registrar(const char *evento)
         exit(1);
     }
 
+    /* passa tudo pra milissegundo e já soma o desvio do relógio */
     ms = tv.tv_sec * 1000LL + tv.tv_usec / 1000 + DESVIO_MS;
     seg = (time_t)(ms / 1000);
 
     if (localtime_r(&seg, &h) == NULL) {
-        fprintf(stderr, "Erro ao converter o horario.\n");
+        fprintf(stderr, "deu erro ao converter a hora\n");
         exit(1);
     }
 
@@ -67,7 +70,7 @@ void registrar(const char *evento)
     fflush(stdout);
 }
 
-/* Recebe o pacote, identifica o texto e separa o valor de Lamport enviado. */
+/* espera chegar um pacote, guarda quem mandou e separa o texto do número do lamport */
 int receber_mensagem(int s, char *texto, struct sockaddr_in *orig, socklen_t *tam)
 {
     char buf[128];
@@ -78,7 +81,7 @@ int receber_mensagem(int s, char *texto, struct sockaddr_in *orig, socklen_t *ta
     struct sockaddr_in *destino = orig;
     socklen_t *tamanho = tam;
 
-    /* Quando o chamador não precisa do remetente, usamos variáveis locais. */
+    /* se quem chamou não quer saber o remetente, uso uma variável daqui mesmo */
     if (destino == NULL) {
         destino = &remetente;
     }
@@ -93,18 +96,19 @@ int receber_mensagem(int s, char *texto, struct sockaddr_in *orig, socklen_t *ta
         exit(1);
     }
 
-    /* UDP entrega bytes; por isso colocamos o terminador manualmente. */
+    /* o udp não manda o fim da string, então coloco o \0 na mão */
     buf[r] = '\0';
 
+    /* o formato é texto|numero, pego o texto até a barra e depois o número */
     if (sscanf(buf, "%63[^|]|%d", texto, &ts) != 2) {
-        fprintf(stderr, "Mensagem recebida em formato invalido: %s\n", buf);
+        fprintf(stderr, "mensagem veio num formato estranho: %s\n", buf);
         exit(1);
     }
 
     return ts;
 }
 
-/* Regra 3: considera o maior relógio e avança mais uma unidade. */
+/* regra 3: fico com o maior entre o meu L e o que chegou, e somo 1 */
 void lamport_recebimento(int ts)
 {
     if (ts > L) {
@@ -113,7 +117,7 @@ void lamport_recebimento(int ts)
     L++;
 }
 
-/* Simula o tempo de processamento de uma chamada ao modelo de linguagem. */
+/* só segura 300 ms pra fingir que tá demorando pra falar com o llm */
 void chamar_llm(void)
 {
     struct timespec espera = {0, 300000000L};
@@ -124,20 +128,20 @@ void chamar_llm(void)
     }
 }
 
-/* Regra 1: um acontecimento interno também faz o relógio avançar. */
+/* regra 1: qualquer coisa que acontece só dentro do processo soma 1 no L */
 void lamport_evento(void)
 {
     L++;
 }
 
-/* Regra 2: avança o relógio antes de enviar e devolve o valor transmitido. */
+/* regra 2: soma 1 antes de mandar e devolve o L pra ir junto na mensagem */
 int lamport_envio(void)
 {
     L++;
     return L;
 }
 
-/* Envia a resposta para o endereço de origem informado pelo recvfrom. */
+/* junta texto e L num pacote só e manda de volta pra quem pediu */
 void enviar_mensagem(int s, const char *texto, int l,
                      const struct sockaddr_in *dst, socklen_t tam)
 {
@@ -146,10 +150,11 @@ void enviar_mensagem(int s, const char *texto, int l,
 
     n = snprintf(buf, sizeof buf, "%s|%d", texto, l);
     if (n < 0 || (size_t)n >= sizeof buf) {
-        fprintf(stderr, "Erro ao montar a mensagem.\n");
+        fprintf(stderr, "deu erro ao montar a mensagem\n");
         exit(1);
     }
 
+    /* o sendto já recebe o endereço de destino, que é o que o recvfrom guardou */
     if (sendto(s, buf, (size_t)n, 0,
                (const struct sockaddr *)dst, tam) == -1) {
         perror("sendto");
@@ -173,17 +178,18 @@ int main(void)
         ts = receber_mensagem(s, texto, &cliente, &tam);
         lamport_recebimento(ts);
 
-        snprintf(ev, sizeof ev, "RECEBE tarefa %d", k);
+        snprintf(ev, sizeof ev, "recebeu tarefa %d", k);
         registrar(ev);
 
         chamar_llm();
         lamport_evento();
-        registrar("chamou o LLM");
+        registrar("chamou o llm");
 
+        /* respondo pro endereço de quem mandou, não pra porta fixa */
         snprintf(msg, sizeof msg, "resultado %d", k);
         enviar_mensagem(s, msg, lamport_envio(), &cliente, tam);
 
-        snprintf(ev, sizeof ev, "ENVIA resultado %d", k);
+        snprintf(ev, sizeof ev, "enviou resultado %d", k);
         registrar(ev);
     }
 
